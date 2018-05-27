@@ -837,11 +837,24 @@ void UsbCam::init_device(int image_width, int image_height, int framerate)
   struct v4l2_crop crop;
   struct v4l2_format fmt;
   unsigned int min;
+  int cameraId = 1;
 
-  if (-1 == xioctl(fd_, VIDIOC_QUERYCAP, &cap))
-  {
-    if (EINVAL == errno)
-    {
+  struct v4l2_streamparm stream_params;
+
+  if (-1 == xioctl(fd_, VIDIOC_S_INPUT, &cameraId))
+    errno_exit("VIDIOC_S_INPUT");
+
+  memset(&stream_params, 0, sizeof(stream_params));
+
+  stream_params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+  stream_params.parm.capture.capturemode = 0x8000;
+
+  if (-1 == xioctl(fd_, VIDIOC_S_PARM, &stream_params))
+   errno_exit("VIDIOC_S_PARM");
+
+  if (-1 == xioctl(fd_, VIDIOC_QUERYCAP, &cap)) {
+    if (EINVAL == errno) {
       ROS_ERROR_STREAM(camera_dev_ << " is no V4L2 device");
       exit(EXIT_FAILURE);
     }
@@ -910,37 +923,18 @@ void UsbCam::init_device(int image_width, int image_height, int framerate)
 
   CLEAR(fmt);
 
-//  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-//  fmt.fmt.pix.width = 640;
-//  fmt.fmt.pix.height = 480;
-//  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-//  fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
-
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   fmt.fmt.pix.width = image_width;
   fmt.fmt.pix.height = image_height;
-  fmt.fmt.pix.pixelformat = pixelformat_;
+  fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
   fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 
   if (-1 == xioctl(fd_, VIDIOC_S_FMT, &fmt))
     errno_exit("VIDIOC_S_FMT");
 
-  /* Note VIDIOC_S_FMT may change width and height. */
-
-  /* Buggy driver paranoia. */
-  min = fmt.fmt.pix.width * 2;
-  if (fmt.fmt.pix.bytesperline < min)
-    fmt.fmt.pix.bytesperline = min;
-  min = fmt.fmt.pix.bytesperline * fmt.fmt.pix.height;
-  if (fmt.fmt.pix.sizeimage < min)
-    fmt.fmt.pix.sizeimage = min;
-
   image_width = fmt.fmt.pix.width;
   image_height = fmt.fmt.pix.height;
 
-  struct v4l2_streamparm stream_params;
-  memset(&stream_params, 0, sizeof(stream_params));
-  stream_params.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   if (xioctl(fd_, VIDIOC_G_PARM, &stream_params) < 0)
     errno_exit("Couldn't query v4l fps!");
 
